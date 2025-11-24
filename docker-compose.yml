@@ -1,0 +1,43 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6
+    container_name: ultralytics-mongodb-test
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .                     # 构建上下文：项目根目录
+      dockerfile: backend/Dockerfile # Dockerfile 路径
+    container_name: ultralytics-backend-test
+    ports:
+      - "8000:8000"
+    environment:
+      - ALIYUN_ACCESS_KEY_ID=fake
+      - ALIYUN_ACCESS_KEY_SECRET=fake
+      - ALIYUN_ROLE_ARN=acs:ram::1431263785458936:role/oss-upload-role
+      - MONGO_URI=mongodb://mongodb:27017
+      - OSS_REGION=cn-guangzhou
+      - OSS_BUCKET=ultralytics-test
+    # 添加初始化命令
+    command: |
+      sh -c "
+        ossutil config -e oss-${OSS_REGION}.aliyuncs.com -i $${ALIYUN_ACCESS_KEY_ID} -k $${ALIYUN_ACCESS_KEY_SECRET} -L CH
+        uvicorn backend.main:app --host 0.0.0.0 --port 8000
+      "
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    # 便于本地调试（可选）
+    volumes:
+      - ./backend:/app/backend
+      - ./fc_worker:/app/fc_worker
+
+volumes:
+  mongodb_data:
