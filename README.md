@@ -6,8 +6,6 @@
 [![Ultralytics](https://img.shields.io/badge/Ultralytics-8.3+-orange)](https://ultralytics.com/)
 [![Alibaba Cloud](https://img.shields.io/badge/Alibaba_Cloud-OSS%20%26%20FC-lightgrey)](https://www.alibabacloud.com/)
 
-A production-grade solution for importing, validating, parsing, and visualizing **YOLO-formatted datasets** up to **100GB**. Built for the **[Ultralytics Full Stack Coding Challenge](https://ultralytics.com/)** with a focus on **senior-level engineering practices**.
-
 ---
 
 ## ✨ Features
@@ -34,18 +32,19 @@ A production-grade solution for importing, validating, parsing, and visualizing 
 
 ```mermaid
 graph LR
-  A[Next.js Frontend] -->|1. Get STS Token| B(FastAPI Backend)
+  A["Next.js Frontend"] -->|1. Get STS Token| B["FastAPI Backend"]
   B -->|2. Return Temp Credentials| A
-  A -->|3. Multipart Upload| C[Alibaba Cloud OSS]
+  A -->|3. Multipart Upload| C["Alibaba Cloud OSS"]
   A -->|4. Notify Complete| B
-  B -->|5. Trigger Process| D[fc_worker]
+  B -->|5. Trigger Process| D["fc_worker"]
   D -->|6. Download ZIP| C
   D -->|7. Validate + Parse| D
-  D -->|8. Store Metadata| E[MongoDB]
-  D -->|9. (Optional) Re-upload Images| C
+  D -->|8. Store Metadata| E["MongoDB"]
+  D -->|9. Re-upload Images| C
   A -->|10. Fetch Datasets/Images| B
   B -->|11. Return Signed URLs| A
   A -->|12. Render Canvas + Labels| A
+```
 
 ---
 
