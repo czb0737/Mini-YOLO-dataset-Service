@@ -8,10 +8,10 @@ from aliyunsdkcore.client import AcsClient
 from aliyunsdksts.request.v20150401 import AssumeRoleRequest
 from motor.motor_asyncio import AsyncIOMotorClient
 
-# 初始化 FastAPI（只初始化一次）
+# Initialize FastAPI (only once)
 app = FastAPI(title="Ultralytics Dataset Importer")
 
-# CORS 配置
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -20,20 +20,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 配置
+# Configuration
 ALIYUN_ACCESS_KEY_ID = os.getenv("ALIYUN_ACCESS_KEY_ID")
 ALIYUN_ACCESS_KEY_SECRET = os.getenv("ALIYUN_ACCESS_KEY_SECRET")
 ALIYUN_ROLE_ARN = os.getenv("ALIYUN_ROLE_ARN")
 OSS_REGION = os.getenv("OSS_REGION", "cn-guangzhou")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
-# 客户端
+# Clients
 acs_client = AcsClient(ALIYUN_ACCESS_KEY_ID, ALIYUN_ACCESS_KEY_SECRET, OSS_REGION)
 mongo_client = AsyncIOMotorClient(MONGO_URI)
 db = mongo_client.yolo_datasets
 
 
-# Pydantic 模型（解决 ObjectId 序列化问题）
+# Pydantic Models (solve ObjectId serialization issue)
 class PyObjectId(ObjectId):
     @classmethod
     def __get_validators__(cls):
@@ -67,7 +67,7 @@ class ImageModel(BaseModel):
     annotations: List[dict]
 
 
-# 请求模型
+# Request Models
 class AuthRequest(BaseModel):
     filename: str
     size: int
@@ -83,7 +83,7 @@ class CompleteRequest(BaseModel):
 
 @app.post("/api/oss/auth")
 def get_oss_sts_token(req: AuthRequest):
-    """获取 OSS 临时上传凭证（阿里云 STS）"""
+    """Get OSS temporary upload credentials (Aliyun STS)"""
     try:
         request = AssumeRoleRequest.AssumeRoleRequest()
         request.set_RoleArn(ALIYUN_ROLE_ARN)
@@ -100,36 +100,37 @@ def get_oss_sts_token(req: AuthRequest):
 @app.post("/api/upload/complete")
 async def upload_complete(req: CompleteRequest):
     """
-    前端通知上传完成，触发数据集处理。
-    本地开发：直接调用 fc_worker.process_dataset
-    云上部署：应由 OSS 事件触发 FC，此处可简化为记录日志
+    Frontend notification of upload completion, triggers dataset processing.
+    Local development: directly call fc_worker.process_dataset
+    Cloud deployment: should be triggered by OSS event to FC, this can be simplified to log recording
     """
     try:
-        from fc_worker.main import process_dataset
+        # from fc_worker.main import process_dataset
 
-        result = await process_dataset(req.objectKey, req.filename)
-        return {"status": "processing_started", "result": result}
+        # result = await process_dataset(req.objectKey, req.filename)
+        # return {"status": "processing_started", "result": result}
+        return {"status": "upload_received", "object_key": req.objectKey}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
 @app.get("/api/datasets", response_model=List[DatasetModel])
 async def list_datasets():
-    """返回所有数据集列表（供前端展示）"""
+    """Return list of all datasets (for frontend display)"""
     datasets = await db.datasets.find().to_list(None)
     return datasets
 
 
 @app.get("/api/datasets/{dataset_id}/images", response_model=List[ImageModel])
 async def list_images(dataset_id: str):
-    """返回指定数据集的所有图像及标注"""
+    """Return all images and annotations for the specified dataset"""
     images = await db.images.find({"dataset_id": dataset_id}).to_list(None)
     return images
 
 
 @app.get("/api/datasets/{dataset_id}/images-signed")
 async def get_signed_image_urls(dataset_id: str):
-    """返回带签名的图像 URL 列表（有效期 1 小时）"""
+    """Return list of signed image URLs (valid for 1 hour)"""
     import oss2
 
     auth = oss2.Auth(
@@ -142,12 +143,12 @@ async def get_signed_image_urls(dataset_id: str):
         bucket_name=os.getenv("OSS_BUCKET"),
     )
 
-    # 获取图像列表
+    # Get image list
     images = await db.images.find({"dataset_id": dataset_id}).to_list(10)
     signed_urls = []
     for img in images:
         oss_key = f"datasets/{dataset_id}/images/{img['filename']}"
-        url = bucket.sign_url("GET", oss_key, 3600)  # 1小时有效
+        url = bucket.sign_url("GET", oss_key, 3600)  # Valid for 1 hour
         signed_urls.append(
             {
                 "filename": img["filename"],
@@ -159,10 +160,10 @@ async def get_signed_image_urls(dataset_id: str):
     return signed_urls
 
 
-# ===== 本地测试用：模拟上传完成（仅用于快速验证 API 层）=====
+# ===== Local testing: Simulate upload completion (only for quick API layer verification) =====
 @app.post("/api/test/upload-complete")
 async def test_upload_complete():
-    """用于本地测试：直接插入 mock 数据（跳过 YOLO 解析）"""
+    """For local testing: directly insert mock data (skip YOLO parsing)"""
     from datetime import datetime
 
     object_key = f"uploads/test-{int(datetime.now().timestamp())}/test-dataset.zip"

@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-// 类型定义（与后端 DatasetModel 一致）
+// Type definitions (consistent with backend DatasetModel)
 type Dataset = {
   id?: string;     // Pydantic alias _id -> id
-  _id?: string;    // 原始 MongoDB _id（兼容）
+  _id?: string;    // Original MongoDB _id (compatibility)
   name: string;
   status: string;
 };
@@ -18,7 +18,7 @@ export default function DatasetsListPage() {
   useEffect(() => {
     const fetchDatasets = async () => {
       try {
-        // 调用 FastAPI 后端（需 CORS 已配置）
+        // Call FastAPI backend (CORS must be configured)
         const res = await fetch('http://localhost:8000/api/datasets');
         if (!res.ok) throw new Error('Failed to fetch datasets');
         const data = await res.json();
@@ -45,7 +45,7 @@ export default function DatasetsListPage() {
       ) : (
         <ul className="space-y-4">
           {datasets.map((ds) => {
-            const id = ds.id || ds._id; // 兼容两种字段名
+            const id = ds.id || ds._id; // Compatible with both field names
             return (
               <li
                 key={id}

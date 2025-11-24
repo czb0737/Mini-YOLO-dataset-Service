@@ -10,9 +10,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 from motor.motor_asyncio import AsyncIOMotorClient
 from ultralytics.data.utils import check_det_dataset
-from PIL import Image  # 用于获取图像尺寸
+from PIL import Image  # Used to get image dimensions
 
-# 从环境变量获取配置
+# Get configuration from environment variables
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 OSS_BUCKET = os.getenv("OSS_BUCKET", "ultralytics-test")
 OSS_ENDPOINT = os.getenv("OSS_ENDPOINT", "oss-cn-guangzhou-internal.aliyuncs.com")
@@ -20,7 +20,7 @@ OSS_REGION = os.getenv("OSS_REGION", "cn-guangzhou")
 
 
 def get_oss_bucket():
-    """获取 OSS Bucket 客户端（用于上传图像）"""
+    """Get OSS Bucket client (used for uploading images)"""
     auth = oss2.Auth(
         access_key_id=os.getenv("ALIYUN_ACCESS_KEY_ID"),
         access_key_secret=os.getenv("ALIYUN_ACCESS_KEY_SECRET"),
@@ -30,13 +30,13 @@ def get_oss_bucket():
 
 
 def download_from_oss(object_key: str, local_path: str):
-    """从 OSS 下载 ZIP 文件"""
+    """Download ZIP file from OSS"""
     bucket = get_oss_bucket()
     bucket.get_object_to_file(object_key, local_path)
 
 
 def upload_image_to_oss(local_img_path: str, dataset_id: str, filename: str):
-    """上传单张图像到 OSS 的 datasets/ 路径"""
+    """Upload a single image to OSS datasets/ path"""
     bucket = get_oss_bucket()
     oss_key = f"datasets/{dataset_id}/images/{filename}"
     # bucket.put_object_from_file(oss_key, local_img_path)
@@ -62,7 +62,7 @@ from pathlib import Path
 
 
 def find_dataset_root(extract_dir: str) -> str:
-    """查找包含 data.yaml 的真实数据集根目录"""
+    """Find the actual dataset root directory containing data.yaml"""
     extract_path = Path(extract_dir)
     if (extract_path / "data.yaml").exists():
         return str(extract_path)
@@ -73,7 +73,7 @@ def find_dataset_root(extract_dir: str) -> str:
 
 
 def validate_and_parse_dataset(root_dir: str, dataset_id: str, original_filename: str):
-    """验证 YOLO 格式并解析图像/标注"""
+    """Validate YOLO format and parse images/annotations"""
     import yaml
     from PIL import Image
 
@@ -85,7 +85,7 @@ def validate_and_parse_dataset(root_dir: str, dataset_id: str, original_filename
     with open(data_yaml_path, "r", encoding="utf-8") as f:
         data_yaml = yaml.safe_load(f)
 
-    # 构建 dataset 元数据
+    # Build dataset metadata
     dataset_doc = {
         "_id": dataset_id,
         "name": original_filename,
@@ -95,7 +95,7 @@ def validate_and_parse_dataset(root_dir: str, dataset_id: str, original_filename
         "splits": [],
     }
 
-    # 解析所有 split
+    # Parse all splits
     image_docs = []
     for split in ["train", "val", "test"]:
         if split not in data_yaml:
@@ -121,10 +121,10 @@ def validate_and_parse_dataset(root_dir: str, dataset_id: str, original_filename
             ]:
                 continue
 
-            # 上传图像到 OSS
+            # Upload image to OSS
             upload_image_to_oss(str(img_path), dataset_id, img_path.name)
 
-            # 解析标注
+            # Parse annotations
             label_path = label_dir / (img_path.stem + ".txt")
             annotations = []
             if label_path.exists():
@@ -139,7 +139,7 @@ def validate_and_parse_dataset(root_dir: str, dataset_id: str, original_filename
                             except (ValueError, IndexError):
                                 continue
 
-            # 获取图像尺寸
+            # Get image dimensions
             width, height = 0, 0
             try:
                 with Image.open(img_path) as im:
@@ -167,7 +167,7 @@ async def process_dataset(object_key: str, original_filename: str):
     db = client.yolo_datasets
 
     try:
-        # 1. 初始化数据库记录（状态：processing）
+        # 1. Initialize database record (status: processing)
         await db.datasets.insert_one(
             {
                 "_id": dataset_id,
@@ -177,7 +177,7 @@ async def process_dataset(object_key: str, original_filename: str):
             }
         )
 
-        # 2. 执行完整处理流程
+        # 2. Execute full processing pipeline
         with tempfile.TemporaryDirectory() as tmp_dir:
             zip_path = os.path.join(tmp_dir, "dataset.zip")
             extract_dir = os.path.join(tmp_dir, "extracted")
@@ -191,7 +191,7 @@ async def process_dataset(object_key: str, original_filename: str):
                 actual_root, dataset_id, original_filename
             )
 
-            # 3. 更新状态为 ready + 写入数据
+            # 3. Update status to ready + write data
             await db.datasets.update_one(
                 {"_id": dataset_id},
                 {
@@ -210,27 +210,30 @@ async def process_dataset(object_key: str, original_filename: str):
         return {"status": "success"}
 
     except Exception as e:
-        # 4. 捕获所有异常，更新状态为 failed
-        error_msg = str(e)[:500]  # 限制长度
+        # 4. Catch all exceptions, update status to failed
+        error_msg = str(e)[:500]  # Limit length
         await db.datasets.update_one(
             {"_id": dataset_id},
             {"$set": {"status": "failed", "error": error_msg}},
-            upsert=True,  # 如果 insert_one 未执行，也创建记录
+            upsert=True,  # Create record if insert_one was not executed
         )
-        raise  # 可选：继续抛出异常供上层记录
+        raise  # Optional: Continue throwing exception for upper layer logging
 
 
-# ========== 云上 FC 入口 ==========
+# ========== Cloud FC Entry Point ==========
 def handler(event, context):
-    """阿里云 Function Compute 入口"""
+    import json
+
     evt = json.loads(event)
-    object_key = evt["object_key"]
-    filename = evt["filename"]
-    result = process_dataset(object_key, filename)
-    return json.dumps(result)
+    object_key = evt["events"][0]["oss"]["object"]["key"]
+    filename = object_key.split("/")[-1]
+
+    # Call core processing logic
+    asyncio.run(process_dataset(object_key, filename))
+    return {"status": "success"}
 
 
-# ========== 本地调试入口 ==========
+# ========== Local Debug Entry Point ==========
 if __name__ == "__main__":
     import asyncio
     import sys
